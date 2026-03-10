@@ -1,14 +1,20 @@
 const restricted_sites = new Set();
+const restricted_urls = new Set();
 
 // Retrieve the blockedWebsitesArray from Chrome storage
 chrome.storage.sync.get("blockedWebsitesArray", function (data) {
   const blockedWebsitesArray = data.blockedWebsitesArray || [];
   if (blockedWebsitesArray && blockedWebsitesArray.length > 0) {
-    // Add the items from blockedWebsitesArray to the set restricted_sites to avoid duplicates
+    // Separate domain blocks from URL blocks
     blockedWebsitesArray.forEach((item) => {
-      // Convert to lowercase and add both versions of the URL
-      restricted_sites.add(item.toLowerCase());
-      restricted_sites.add(normalizeURL(item.toLowerCase()));
+      const normalizedItem = item.toLowerCase();
+      // Check if it's a URL (contains / after domain) or just a domain
+      if (normalizedItem.includes('/')) {
+        restricted_urls.add(normalizedItem);
+      } else {
+        restricted_sites.add(normalizedItem);
+        restricted_sites.add(normalizeURL(normalizedItem));
+      }
     });
 
     // Call the function to check if the website should be blocked
@@ -21,7 +27,22 @@ function normalizeURL(url) {
   return url.replace(/^www\./i, "");
 }
 
-// Check if the current website should be blocked
+// Check if a specific URL path is blocked
+function shouldBlockURL() {
+  const currentHostname = normalizeURL(window.location.hostname);
+  const currentPathname = window.location.pathname;
+  const fullUrl = currentHostname + currentPathname;
+  
+  // Check for exact or partial URL matches
+  for (let blockedUrl of restricted_urls) {
+    if (fullUrl.includes(blockedUrl) || blockedUrl.includes(fullUrl)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Check if the current website domain is blocked
 function shouldBlockWebsite() {
   const currentHostname = normalizeURL(window.location.hostname);
   return restricted_sites.has(currentHostname);
@@ -39,7 +60,12 @@ function createBlockedPage() {
 
 // Check if the website should be blocked and take appropriate action
 function check_if_restricted() {
-  if (shouldBlockWebsite()) {
+  // Check URL-specific blocks first (more granular)
+  if (shouldBlockURL()) {
+    createBlockedPage();
+  }
+  // Then check domain-level blocks
+  else if (shouldBlockWebsite()) {
     createBlockedPage();
   }
 }
